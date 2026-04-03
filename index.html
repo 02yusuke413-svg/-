@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>お薬タイマー</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 24px;
+      padding: 40px 32px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      text-align: center;
+    }
+
+    .icon { font-size: 56px; margin-bottom: 12px; }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a202c;
+      margin-bottom: 32px;
+    }
+
+    .take-btn {
+      width: 100%;
+      padding: 18px;
+      font-size: 18px;
+      font-weight: 700;
+      color: white;
+      background: #4c9be8;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .take-btn:hover { background: #3a86d4; }
+    .take-btn:active { transform: scale(0.98); }
+    .take-btn:disabled {
+      background: #a0aec0;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status-box {
+      margin-top: 28px;
+      padding: 20px;
+      border-radius: 14px;
+      background: #f7fafc;
+      display: none;
+    }
+
+    .status-box.visible { display: block; }
+
+    .last-time {
+      font-size: 13px;
+      color: #718096;
+      margin-bottom: 8px;
+    }
+
+    .countdown {
+      font-size: 42px;
+      font-weight: 800;
+      color: #2d3748;
+      letter-spacing: -1px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .countdown.ready { color: #38a169; }
+
+    .next-label {
+      font-size: 13px;
+      color: #718096;
+      margin-top: 6px;
+    }
+
+    .ready-msg {
+      display: none;
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #f0fff4;
+      border: 1.5px solid #68d391;
+      border-radius: 10px;
+      color: #276749;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .ready-msg.visible { display: block; }
+
+    .history {
+      margin-top: 28px;
+      text-align: left;
+    }
+
+    .history h2 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #718096;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+
+    .history-list {
+      list-style: none;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    .history-list li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #edf2f7;
+      font-size: 14px;
+      color: #4a5568;
+    }
+
+    .history-list li:last-child { border-bottom: none; }
+
+    .dot {
+      width: 8px; height: 8px;
+      background: #4c9be8;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .notif-bar {
+      margin-top: 20px;
+      padding: 10px 14px;
+      background: #fffbeb;
+      border: 1px solid #f6e05e;
+      border-radius: 10px;
+      font-size: 13px;
+      color: #744210;
+      display: none;
+    }
+
+    .notif-bar.visible { display: block; }
+
+    .clear-btn {
+      margin-top: 20px;
+      background: none;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      color: #a0aec0;
+      cursor: pointer;
+    }
+
+    .clear-btn:hover { border-color: #fc8181; color: #e53e3e; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">💊</div>
+  <h1>お薬タイマー</h1>
+
+  <button class="take-btn" id="takeBtn" onclick="recordDose()">飲んだ！</button>
+
+  <div class="status-box" id="statusBox">
+    <div class="last-time" id="lastTime"></div>
+    <div class="countdown" id="countdown">--:--:--</div>
+    <div class="next-label" id="nextLabel">次に飲めるまで</div>
+    <div class="ready-msg" id="readyMsg">✅ 次の薬を飲むことができます！</div>
+  </div>
+
+  <div class="notif-bar" id="notifBar">
+    🔔 通知を許可すると、8時間後に知らせます
+    <br><button onclick="requestNotif()" style="margin-top:6px;padding:4px 10px;font-size:12px;cursor:pointer;border-radius:6px;border:1px solid #d69e2e;background:#fefcbf;">通知を許可する</button>
+  </div>
+
+  <div class="history" id="historySection" style="display:none">
+    <h2>服薬履歴</h2>
+    <ul class="history-list" id="historyList"></ul>
+  </div>
+
+  <button class="clear-btn" id="clearBtn" style="display:none" onclick="clearHistory()">履歴をクリア</button>
+</div>
+
+<script>
+  const INTERVAL_MS = 8 * 60 * 60 * 1000; // 8 hours
+  const STORAGE_KEY = 'mediDoses';
+
+  let timerInterval = null;
+  let notifTimer = null;
+
+  function getDoses() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+    catch { return []; }
+  }
+
+  function saveDoses(doses) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(doses));
+  }
+
+  function formatTime(date) {
+    return date.toLocaleString('ja-JP', {
+      month: 'numeric', day: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function formatCountdown(ms) {
+    if (ms <= 0) return '00:00:00';
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
+  }
+
+  function recordDose() {
+    const now = Date.now();
+    const doses = getDoses();
+    doses.unshift(now);
+    saveDoses(doses.slice(0, 20)); // keep last 20
+
+    scheduleNotification(now);
+    render();
+  }
+
+  function render() {
+    const doses = getDoses();
+    const takeBtn = document.getElementById('takeBtn');
+    const statusBox = document.getElementById('statusBox');
+    const lastTimeEl = document.getElementById('lastTime');
+    const countdownEl = document.getElementById('countdown');
+    const nextLabel = document.getElementById('nextLabel');
+    const readyMsg = document.getElementById('readyMsg');
+    const historySection = document.getElementById('historySection');
+    const historyList = document.getElementById('historyList');
+    const clearBtn = document.getElementById('clearBtn');
+
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+
+    if (doses.length === 0) {
+      statusBox.classList.remove('visible');
+      historySection.style.display = 'none';
+      clearBtn.style.display = 'none';
+      takeBtn.disabled = false;
+      return;
+    }
+
+    statusBox.classList.add('visible');
+    historySection.style.display = 'block';
+    clearBtn.style.display = 'inline-block';
+
+    const lastDose = doses[0];
+    const nextTime = lastDose + INTERVAL_MS;
+    lastTimeEl.textContent = `最後に飲んだ時刻：${formatTime(new Date(lastDose))}`;
+
+    function tick() {
+      const remaining = nextTime - Date.now();
+      if (remaining <= 0) {
+        countdownEl.textContent = '00:00:00';
+        countdownEl.classList.add('ready');
+        nextLabel.textContent = '次の薬が飲めます';
+        readyMsg.classList.add('visible');
+        takeBtn.disabled = false;
+        clearInterval(timerInterval);
+      } else {
+        countdownEl.textContent = formatCountdown(remaining);
+        countdownEl.classList.remove('ready');
+        nextLabel.textContent = '次に飲めるまで';
+        readyMsg.classList.remove('visible');
+        takeBtn.disabled = true;
+      }
+    }
+
+    tick();
+    timerInterval = setInterval(tick, 1000);
+
+    // Render history
+    historyList.innerHTML = '';
+    doses.forEach((ts, i) => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="dot"></span>${formatTime(new Date(ts))}${i === 0 ? ' <span style="color:#4c9be8;font-size:12px;font-weight:700;">最新</span>' : ''}`;
+      historyList.appendChild(li);
+    });
+  }
+
+  function scheduleNotification(doseTime) {
+    if (notifTimer) clearTimeout(notifTimer);
+    const delay = (doseTime + INTERVAL_MS) - Date.now();
+    if (delay <= 0) return;
+
+    if (Notification.permission === 'granted') {
+      notifTimer = setTimeout(() => {
+        new Notification('💊 お薬の時間です', {
+          body: '8時間が経過しました。次の薬を飲むことができます。',
+          icon: '💊'
+        });
+      }, delay);
+    }
+  }
+
+  function requestNotif() {
+    Notification.requestPermission().then(perm => {
+      document.getElementById('notifBar').classList.remove('visible');
+      if (perm === 'granted') {
+        const doses = getDoses();
+        if (doses.length > 0) scheduleNotification(doses[0]);
+      }
+    });
+  }
+
+  function clearHistory() {
+    if (!confirm('履歴をすべて削除しますか？')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    if (timerInterval) clearInterval(timerInterval);
+    if (notifTimer) clearTimeout(notifTimer);
+    render();
+  }
+
+  // Init
+  (function init() {
+    const notifBar = document.getElementById('notifBar');
+
+    if ('Notification' in window) {
+      if (Notification.permission === 'default') {
+        notifBar.classList.add('visible');
+      } else if (Notification.permission === 'granted') {
+        // Re-schedule notification if timer is still pending
+        const doses = getDoses();
+        if (doses.length > 0) scheduleNotification(doses[0]);
+      }
+    }
+
+    render();
+  })();
+</script>
+</body>
+</html>
